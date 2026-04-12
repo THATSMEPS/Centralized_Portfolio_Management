@@ -1,0 +1,41 @@
+/* ==========================================================
+   Theme Animations
+   ----------------------------------------------------------
+   All keyframe animations live here so they can be reused
+   across any component that needs them.
+   ========================================================== */
+
+/* Live-feed / terminal scroll */
+@keyframes feed-scroll {
+  0% {
+    transform: translateY(0);
+  }
+  100% {
+    transform: translateY(-33.33%);
+  }
+}
+
+.animate-feed {
+  animation: feed-scroll 15s linear infinite;
+}
+
+/* Generic fade-in + slide-up entrance */
+@keyframes animate-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-in {
+  animation: animate-in 0.7s ease-out;
+}
+
+/* Outlined text effect (used for hero & headings) */
+.text-outline {
+  -webkit-text-stroke: 1px rgba(255, 255, 255, 0.3);
+}

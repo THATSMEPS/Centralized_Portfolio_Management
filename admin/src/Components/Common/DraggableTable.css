@@ -1,0 +1,42 @@
+/* DraggableTable Excel-like thickness and spacing */
+.rdt_Table {
+  font-size: 15px;
+  border-collapse: separate;
+  border-spacing: 0;
+  background: #fff;
+}
+.rdt_TableHead {
+  border-bottom: 1.5px solid #e9ebec;
+}
+.rdt_TableHeadRow {
+  min-height: 44px;
+  height: 44px;
+}
+.rdt_TableCol {
+  font-weight: 500;
+  padding: 8px 12px;
+  border-right: 1px solid #f3f3f3;
+  background: #fafbfc;
+  letter-spacing: 0.01em;
+}
+.rdt_TableCol:last-child {
+  border-right: none;
+}
+.rdt_TableRow {
+  min-height: 44px;
+  height: 44px;
+  border-bottom: 1px solid #f3f3f3;
+}
+.rdt_TableCell {
+  padding: 8px 12px;
+  border-right: 1px solid #f3f3f3;
+  background: #fff;
+  font-size: 15px;
+  letter-spacing: 0.01em;
+}
+.rdt_TableCell:last-child {
+  border-right: none;
+}
+.rdt_TableBody .rdt_TableRow:last-child {
+  border-bottom: none;
+}
