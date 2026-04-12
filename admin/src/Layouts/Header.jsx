@@ -1,6 +1,5 @@
 import React from "react";
 import ProfileDropdown from "../Components/Common/ProfileDropdown";
-import NotificationDropdown from "../Components/Common/NotificationDropdown";
 import UniversalSearch from "../Components/Common/UniversalSearch";
 
 const Header = ({ onChangeLayoutMode, layoutModeType, headerClass }) => {
@@ -109,10 +108,8 @@ const Header = ({ onChangeLayoutMode, layoutModeType, headerClass }) => {
                         </div>
 
                         <UniversalSearch />
-                        <div className="d-flex align-items-center">
-                            {/* Notification Dropdown */}
-                            <NotificationDropdown />
 
+                        <div className="d-flex align-items-center">
                             {/* Profile Dropdown */}
                             <ProfileDropdown />
                         </div>

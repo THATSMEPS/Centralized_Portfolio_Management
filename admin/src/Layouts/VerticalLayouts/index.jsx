@@ -240,7 +240,7 @@ const VerticalLayout = (props) => {
 
     return (
         <React.Fragment>
-            <div className="mb-5">
+            <div>
                 {/* menu Items */}
                 <li className="menu-title">
                     <span

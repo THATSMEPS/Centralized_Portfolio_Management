@@ -59,98 +59,89 @@ const Sidebar = ({ layoutType }) => {
         <React.Fragment>
             <style>
                 {`
-                    /* Minimal Sidebar Styling */
+                    /* Modern Sidebar Styling */
                     .minimal-sidebar {
-                        background: var(--vz-primary, var(--primary, #004B96));
-                        border-right: 1px solid rgba(255, 255, 255, 0.1);
+                        background: var(--vz-vertical-menu-bg, #0f172a) !important;
+                        border-right: none !important;
+                        box-shadow: 4px 0 10px rgba(0, 0, 0, 0.05) !important;
                     }
                     
                     .minimal-logo-box {
-                        background: white;
-                        border-bottom: 2px solid var(--vz-primary, var(--primary, #004B96));
+                        background: transparent !important;
+                        border-bottom: none !important;
                         display: flex;
                         align-items: center;
-                        justify-content: center;
-                        padding: 15px;
-                        height: 80px;
+                        justify-content: flex-start;
+                        padding: 15px 20px;
+                        height: 70px;
+                    }
+
+                    .navbar-brand-box .logo-text {
+                        color: white;
+                        font-size: 18px;
+                        font-weight: 700;
+                        letter-spacing: -0.5px;
+                        margin-left: 10px;
                     }
                     
                     /* Menu styling */
                     .menu-title {
-                        color: rgba(255, 255, 255, 0.5) !important;
-                        font-size: 10px;
-                        font-weight: 500;
-                        letter-spacing: 0.5px;
+                        color: #64748b !important;
+                        font-size: 11px;
+                        font-weight: 600;
+                        letter-spacing: 1px;
                         text-transform: uppercase;
-                        padding: 15px 20px 8px;
-                        margin-top: 5px;
+                        padding: 10px 24px 8px !important;
+                        margin: 0 !important;
                     }
                     
                     .navbar-nav .nav-item {
-                        margin: 1px 8px;
+                        margin: 2px 12px !important;
                     }
                     
                     .navbar-nav .nav-link {
-                        color: rgba(255, 255, 255, 0.8) !important;
-                        font-size: 13px;
-                        font-weight: 400;
-                        padding: 4px 8px !important;
-                        border-radius: 4px;
-                        transition: background 0.2s;
-                    }
-                    
-                    .navbar-nav .nav-link:hover {
-                        background: rgba(255, 255, 255, 0.08);
-                        color: #ffffff !important;
-                    }
-                    
-                    .navbar-nav .nav-link.active {
-                        background: rgba(var(--primaryRgb, 0 75 150), 0.15);
-                        color: #ffffff !important;
+                        color: #94a3b8 !important;
+                        font-size: 14px;
                         font-weight: 500;
-                    }
-                    
-                    .navbar-nav .menu-link {
+                        padding: 10px 16px !important;
+                        border-radius: 8px !important;
+                        transition: all 0.2s ease;
                         display: flex;
                         align-items: center;
                     }
                     
-                    .navbar-nav .menu-link::after {
-                        font-size: 16px;
-                        opacity: 0.6;
-                        transition: transform 0.2s;
+                    .navbar-nav .nav-link:hover {
+                        background: rgba(255, 255, 255, 0.05) !important;
+                        color: #ffffff !important;
                     }
                     
-                    .navbar-nav .menu-link[aria-expanded="true"]::after {
-                        transform: rotate(90deg);
+                    .navbar-nav .nav-link.active {
+                        background: var(--vz-primary) !important;
+                        color: #ffffff !important;
+                        box-shadow: 0 4px 12px rgba(37, 99, 235, 0.25);
+                    }
+
+                    .navbar-nav .nav-link i {
+                        font-size: 18px !important;
+                        margin-right: 12px !important;
+                        opacity: 0.8;
+                    }
+
+                    .navbar-nav .nav-link.active i {
+                        opacity: 1;
                     }
                     
-                    .menu-dropdown {
-                        margin: 2px 0;
-                        padding: 2px 0;
-                    }
-                    
-                    .menu-dropdown .nav-link {
-                        padding-left: 35px !important;
-                        font-size: 12px;
-                    }
-                    
-                    /* Icon spacing */
-                    .navbar-nav i {
-                        margin-right: 8px;
-                    }
-                    
-                    /* Toggle button visibility */
+                    /* Toggle button */
                     .btn-vertical-sm-hover {
-                        background: rgba(var(--primaryRgb, 0 75 150), 0.1) !important;
-                        border: 1px solid var(--vz-primary, var(--primary, #004B96)) !important;
-                        border-radius: 4px !important;
-                        padding: 4px 8px !important;
-                        color: var(--vz-primary, var(--primary, #004B96)) !important;
+                        background: rgba(255, 255, 255, 0.05) !important;
+                        border: none !important;
+                        border-radius: 6px !important;
+                        color: #94a3b8 !important;
                     }
 
                     .btn-vertical-sm-hover:hover {
-                        background: rgba(var(--primaryRgb, 0 75 150), 0.2) !important;
+                        color: white !important;
+                        background: rgba(255, 255, 255, 0.1) !important;
                     }
                     
                     /* Collapsed Sidebar (sm or sm-hover) - Support both */
@@ -479,31 +470,15 @@ const Sidebar = ({ layoutType }) => {
             </style>
             <div className="app-menu navbar-menu minimal-sidebar">
                 <div className="navbar-brand-box minimal-logo-box">
-                    <Link to="/dashboard" className="logo logo-dark">
+                    <Link to="/dashboard" className="logo logo-light d-flex align-items-center text-decoration-none">
                         <span className="logo-sm">
-                            <img src={logo} alt="Elevate Golf" height="60" />
+                            <img src={logo} alt="" height="25" />
                         </span>
-                        <span className="logo-lg">
-                            <img src={logo} alt="Elevate Golf" height="60" />
+                        <span className="logo-lg d-flex align-items-center">
+                            <img src={logo} alt="" height="30" />
+                            <span className="logo-text ms-2" style={{ fontSize: '16px', textTransform: 'none' }}>Admin Panel</span>
                         </span>
                     </Link>
-
-                    <Link to="/dashboard" className="logo logo-light">
-                        <span className="logo-sm">
-                            <img src={logo} alt="Elevate Golf" height="60" />
-                        </span>
-                        <span className="logo-lg">
-                            <img src={logo} alt="Elevate Golf" height="60" />
-                        </span>
-                    </Link>
-                    <button
-                        onClick={addEventListenerOnSmHoverMenu}
-                        type="button"
-                        className="btn btn-sm p-0 fs-20 header-item float-end btn-vertical-sm-hover"
-                        id="vertical-hover"
-                    >
-                        <i className="ri-record-circle-line"></i>
-                    </button>
                 </div>
                 {layoutType === "horizontal" ? (
                     <div id="scrollbar">

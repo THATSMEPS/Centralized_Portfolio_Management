@@ -7,21 +7,40 @@ import { getDashboardAnalytics } from '../../api/portfolioDashboard.api';
 
 const StatCard = ({ title, count, icon, color, link }) => (
   <Col xl={3} md={6}>
-    <Card className="card-animate">
+    <style>
+      {`
+        .stat-card-glow {
+            border-radius: 16px !important;
+            border: none !important;
+            transition: all 0.3s ease !important;
+            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1) !important;
+        }
+        .stat-card-glow:hover {
+            transform: translateY(-5px) !important;
+            box-shadow: 0 10px 15px -3px rgba(37, 99, 235, 0.2), 0 4px 6px -4px rgba(37, 99, 235, 0.2) !important;
+            filter: drop-shadow(0 0 8px rgba(37, 99, 235, 0.1));
+        }
+        .icon-box-dark {
+            background-color: #0f172a !important;
+            border-radius: 12px !important;
+        }
+      `}
+    </style>
+    <Card className="card-animate stat-card-glow">
       <CardBody>
         <div className="d-flex align-items-center">
           <div className="flex-grow-1 overflow-hidden">
-            <p className="text-uppercase fw-medium text-muted text-truncate mb-0">{title}</p>
+            <p className="text-uppercase fw-medium text-muted text-truncate mb-0" style={{ letterSpacing: '0.5px', fontSize: '11px' }}>{title}</p>
           </div>
         </div>
         <div className="d-flex align-items-end justify-content-between mt-4">
           <div>
-            <h4 className="fs-22 fw-semibold ff-secondary mb-4">{count}</h4>
-            {link && <Link to={link} className="text-decoration-underline text-muted">View All</Link>}
+            <h4 className="fs-22 fw-semibold ff-secondary mb-4" style={{ color: '#1e293b' }}>{count}</h4>
+            {link && <Link to={link} className="text-decoration-underline text-muted" style={{ fontSize: '12px' }}>View All</Link>}
           </div>
           <div className="avatar-sm flex-shrink-0">
-            <span className={`avatar-title bg-${color}-subtle rounded fs-3`}>
-              <i className={`${icon} text-${color}`}></i>
+            <span className="avatar-title icon-box-dark fs-3">
+              <i className={`${icon} text-white`}></i>
             </span>
           </div>
         </div>
@@ -74,7 +93,7 @@ const Dashboard = () => {
 
         <Row>
           <Col xl={12}>
-            <Card>
+            <Card className="stat-card-glow">
               <div className="card-header d-flex align-items-center justify-content-between">
                 <h4 className="card-title mb-0">Recent Enquiries</h4>
                 <Link to="/enquiries" className="btn btn-sm btn-soft-primary">View All</Link>

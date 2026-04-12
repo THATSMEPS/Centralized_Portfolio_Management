@@ -142,75 +142,80 @@ const UniversalSearch = () => {
     };
 
     const customStyles = {
-            control: (provided, state) => ({
+        control: (provided, state) => ({
             ...provided,
             minWidth: "350px",
-            maxWidth: "500px",
-            borderRadius: "6px",
-            border: state.isFocused ? "2px solid var(--vz-success, var(--success))" : "1px solid var(--neutralLight, #F9F7F2)",
+            maxWidth: "550px",
+            borderRadius: "10px",
+            border: "none",
+            backgroundColor: "#f1f5f9",
             boxShadow: state.isFocused
-                ? "0 0 0 2px rgba(var(--successRgb, 46 125 50), 0.1)"
+                ? "0 0 0 2px rgba(37, 99, 235, 0.1)"
                 : "none",
             "&:hover": {
-                border: "1px solid var(--vz-success, var(--success))",
+                backgroundColor: "#e2e8f0",
             },
-            minHeight: "38px",
+            minHeight: "42px",
             cursor: "text",
         }),
         menu: (provided) => ({
             ...provided,
-            borderRadius: "6px",
-            boxShadow: "0 4px 12px rgba(0, 0, 0, 0.15)",
+            borderRadius: "10px",
+            boxShadow: "0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1)",
             zIndex: 1050,
-            marginTop: "4px",
+            marginTop: "8px",
+            border: "none",
+            overflow: "hidden",
         }),
-            option: (provided, state) => ({
+        option: (provided, state) => ({
             ...provided,
-            backgroundColor: state.isFocused ? "var(--vz-success, var(--success))" : "white",
-            color: state.isFocused ? "white" : "#333",
+            backgroundColor: state.isFocused ? "#2563eb" : "white",
+            color: state.isFocused ? "white" : "#1e293b",
             cursor: "pointer",
-            padding: "10px 14px",
-            fontSize: "13px",
+            padding: "12px 16px",
+            fontSize: "14px",
+            fontWeight: "500",
             "&:active": {
-                backgroundColor: "var(--vz-success, var(--success))",
+                backgroundColor: "#1d4ed8",
             },
         }),
         placeholder: (provided) => ({
             ...provided,
-            color: "var(--textMuted, #6B5D55)",
-            fontSize: "13px",
+            color: "#64748b",
+            fontSize: "14px",
+            fontWeight: "400",
         }),
         input: (provided) => ({
             ...provided,
-            color: "#333",
-            fontSize: "13px",
+            color: "#1e293b",
+            fontSize: "14px",
         }),
         valueContainer: (provided) => ({
             ...provided,
-            padding: "2px 12px",
+            padding: "2px 16px",
         }),
     };
 
     return (
         <div
+            className="d-flex align-items-center"
             style={{
                 flex: 1,
-                display: "flex",
                 justifyContent: "center",
                 maxWidth: "600px",
                 margin: "0 20px",
             }}
         >
-            <Select
-                ref={selectRef}
-                options={searchOptions}
-                onChange={handleSelect}
-                placeholder="Search menus... (Ctrl+S)"
-                styles={customStyles}
-                isClearable
-                noOptionsMessage={() => "No menus found"}
-            />
-        </div>
+                <Select
+                    ref={selectRef}
+                    options={searchOptions}
+                    onChange={handleSelect}
+                    placeholder="Search dashboards..."
+                    styles={customStyles}
+                    isClearable
+                    noOptionsMessage={() => "No menus found"}
+                />
+            </div>
     );
 };
 

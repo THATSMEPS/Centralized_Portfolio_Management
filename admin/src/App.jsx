@@ -9,7 +9,14 @@ import { MenuProvider } from "./context/MenuContext";
 import { ToastContainer } from "react-toastify";
 import config from "./config";
 
+import { applyTheme } from "./common/themeConfig";
+import { useEffect } from "react";
+
 function App() {
+    useEffect(() => {
+        applyTheme();
+    }, []);
+
     axios.defaults.baseURL = config.api.API_URL;
 
     return (
