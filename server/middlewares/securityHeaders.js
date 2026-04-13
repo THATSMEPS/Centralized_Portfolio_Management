@@ -140,23 +140,7 @@ const getCorsConfig = (allowedOrigins = []) => {
   const origins = [...new Set([...defaultOrigins, ...allowedOrigins])];
 
   return {
-    origin: (origin, callback) => {
-      // Allow requests with no origin (mobile apps, curl, etc.)
-      if (!origin) return callback(null, true);
-
-      if (origins.includes(origin) || origin.endsWith(".vercel.app")) {
-        return callback(null, true);
-      }
-
-      // In development or if it matches localhost, allow
-      if (process.env.NODE_ENV === "development" || origin.includes("localhost")) {
-        return callback(null, true);
-      }
-
-      console.warn(`[CORS] Blocked request from origin: ${origin}`);
-      return callback(new Error("Not allowed by CORS"), false);
-
-    },
+    origin: true,
     credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
     allowedHeaders: [
