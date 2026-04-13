@@ -101,7 +101,7 @@ const updateCompanyMaster = async (req, res) => {
 
     // Handle file updates
     if (req.files && req.files.logo) {
-      if (companyMaster.logo) {
+      if (companyMaster.logo && !companyMaster.logo.startsWith("http")) {
         const oldLogoPath = path.join(companyMaster.logo);
         if (fs.existsSync(oldLogoPath)) {
           fs.unlinkSync(oldLogoPath);
@@ -110,8 +110,9 @@ const updateCompanyMaster = async (req, res) => {
       companyMaster.logo = req.files.logo[0].path;
     }
 
+
     if (req.files && req.files.favicon) {
-      if (companyMaster.favicon) {
+      if (companyMaster.favicon && !companyMaster.favicon.startsWith("http")) {
         const oldFaviconPath = path.join(companyMaster.favicon);
         if (fs.existsSync(oldFaviconPath)) {
           fs.unlinkSync(oldFaviconPath);
@@ -119,6 +120,7 @@ const updateCompanyMaster = async (req, res) => {
       }
       companyMaster.favicon = req.files.favicon[0].path;
     }
+
 
     await companyMaster.save();
 

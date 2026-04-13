@@ -21,10 +21,15 @@ const router = express.Router();
 // ============ SECURE FILE UPLOAD CONFIGURATION ============
 const logoUploadFolder = "uploads/companyMaster";
 
-// Ensure upload directory exists
-if (!fs.existsSync(logoUploadFolder)) {
-  fs.mkdirSync(logoUploadFolder, { recursive: true });
+// Ensure upload directory exists - Wrapped in try-catch for read-only systems (Vercel)
+try {
+  if (!fs.existsSync(logoUploadFolder)) {
+    fs.mkdirSync(logoUploadFolder, { recursive: true });
+  }
+} catch (err) {
+  console.warn(`[UPLOAD] Operating in read-only environment. Skipping local folder creation: ${logoUploadFolder}`);
 }
+
 
 /**
  * Secure upload middleware for company logo and favicon

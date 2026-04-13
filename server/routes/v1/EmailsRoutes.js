@@ -32,8 +32,13 @@ const router = express.Router();
 const descriptionUploadDir = "uploads/cms/email-template/signature";
 
 // Ensure upload directory exists
-if (!fs.existsSync(descriptionUploadDir)) {
-  fs.mkdirSync(descriptionUploadDir, { recursive: true });
+// Ensure upload directory exists - Wrapped in try-catch for read-only systems (Vercel)
+try {
+  if (!fs.existsSync(descriptionUploadDir)) {
+    fs.mkdirSync(descriptionUploadDir, { recursive: true });
+  }
+} catch (err) {
+  console.warn(`[UPLOAD] Operating in read-only environment. Skipping local folder creation: ${descriptionUploadDir}`);
 }
 
 /**
@@ -625,7 +630,7 @@ router.post(
       });
     }
 
-    const imageUrl = `${process.env.REACT_APP_API_URL}/uploads/cms/email-template/signature/${req.file.filename}`;
+    const imageUrl = req.file.path;
 
     return res.status(200).json({
       isOk: true,

@@ -43,9 +43,9 @@ build/
 .cache/
 coverage/
 
-# ============ Uploads (if sensitive) ============
-# Uncomment if uploads contain sensitive data
-# uploads/
+# ============ Uploads ============
+uploads/
+
 
 # ============ Temp Files ============
 *.tmp

@@ -7,8 +7,13 @@ const { createSecureImageUpload } = require("../../middlewares/secureUpload");
 const router = express.Router();
 
 const uploadFolder = "uploads/teamMembers";
-if (!fs.existsSync(uploadFolder)) {
-  fs.mkdirSync(uploadFolder, { recursive: true });
+// Ensure upload directory exists - Wrapped in try-catch for read-only systems (Vercel)
+try {
+  if (!fs.existsSync(uploadFolder)) {
+    fs.mkdirSync(uploadFolder, { recursive: true });
+  }
+} catch (err) {
+  console.warn(`[UPLOAD] Operating in read-only environment. Skipping local folder creation: ${uploadFolder}`);
 }
 
 const avatarUpload = createSecureImageUpload({

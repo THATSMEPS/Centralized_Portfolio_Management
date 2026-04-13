@@ -1,715 +1,200 @@
-/**
- * Secure File Upload Middleware
- * OWASP-compliant file upload security including:
- * - Magic byte validation (file-type library)
- * - Double extension attack prevention
- * - MIME type validation
- * - File size limits
- * - Secure random filename generation (UUID)
- * - Image compression and WebP conversion (requires Node 18+)
- * 
- * OWASP File Upload Cheat Sheet:
- * https://cheatsheetseries.owasp.org/cheatsheets/File_Upload_Cheat_Sheet.html
- */
-
 const multer = require("multer");
 const { randomBytes, randomUUID } = require('crypto');
+const cloudinary = require("cloudinary").v2;
+const streamifier = require("streamifier");
+const path = require("path");
+
+// Configure Cloudinary
+cloudinary.config({
+    cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+    api_key: process.env.CLOUDINARY_API_KEY,
+    api_secret: process.env.CLOUDINARY_API_SECRET,
+});
 
 /**
- * Synchronous UUID v4 generator (drop-in replacement for `uuid.v4`):
- * - Uses `crypto.randomUUID()` when available (Node 14.17+/18+)
- * - Falls back to RFC-4122 compliant generation using `randomBytes`
+ * Synchronous UUID v4 generator
  */
 function uuidv4() {
     if (typeof randomUUID === 'function') return randomUUID();
-
     const bytes = randomBytes(16);
-    // Per RFC 4122 section 4.4, set version and variant bits
     bytes[6] = (bytes[6] & 0x0f) | 0x40; // version 4
     bytes[8] = (bytes[8] & 0x3f) | 0x80; // variant 10
     const hex = bytes.toString('hex');
     return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
 
-const path = require("path");
-const fs = require("fs");
-const fsPromises = require("fs").promises;
-
-// Lazy load sharp to handle Node version compatibility
-// Sharp requires Node.js 18+ - if not available, compression is disabled
+// Lazy load sharp
 let sharp = null;
 let sharpAvailable = false;
-
 try {
     sharp = require("sharp");
     sharpAvailable = true;
     console.log('[UPLOAD] Sharp loaded - image compression enabled');
 } catch (err) {
-    console.warn('[UPLOAD] Sharp not available - image compression disabled. Require Node 18+');
+    console.warn('[UPLOAD] Sharp not available - image compression disabled');
     sharpAvailable = false;
 }
 
 // ============ SECURITY CONFIGURATION ============
+const DANGEROUS_EXTENSIONS_REGEX = /\.(php|php\d|phtml|exe|sh|bash|pl|py|js|jsp|asp|aspx|bat|cmd|vbs|wsf|cgi|com|dll|msi|scr)(\.|$)/i;
 
-/**
- * Dangerous extensions regex - blocks script/executable extensions
- * Prevents double-extension attacks (e.g., image.jpg.php)
- */
-const DANGEROUS_EXTENSIONS_REGEX =
-    /\.(php|php\d|phtml|exe|sh|bash|pl|py|js|jsp|asp|aspx|bat|cmd|vbs|wsf|cgi|com|dll|msi|scr)(\.|$)/i;
-
-/**
- * Allowed MIME types for different file categories
- */
 const ALLOWED_MIMES = {
     images: ['image/jpeg', 'image/png', 'image/gif', 'image/webp'],
     documents: ['application/pdf'],
     all: ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'application/pdf'],
 };
 
-/**
- * Allowed file extensions (must match MIME types)
- */
 const ALLOWED_EXTENSIONS = {
     images: ['.jpg', '.jpeg', '.png', '.gif', '.webp'],
     documents: ['.pdf'],
     all: ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.pdf'],
 };
 
-/**
- * Default file size limits (in bytes)
- */
 const FILE_SIZE_LIMITS = {
     image: 2 * 1024 * 1024,      // 2 MB
     document: 10 * 1024 * 1024,  // 10 MB
     default: 5 * 1024 * 1024,    // 5 MB
 };
 
-// ============ HELPER FUNCTIONS ============
+// ============ CLOUDINARY HELPER ============
 
 /**
- * Ensure upload directory exists with proper permissions
- * @param {string} directory - Directory path
+ * Upload buffer to Cloudinary
  */
-async function ensureUploadDir(directory) {
-    try {
-        await fsPromises.mkdir(directory, { recursive: true });
-    } catch (err) {
-        if (err.code !== 'EEXIST') throw err;
-    }
-}
+const uploadToCloudinary = (buffer, folder, resourceType = "auto") => {
+    return new Promise((resolve, reject) => {
+        const uploadStream = cloudinary.uploader.upload_stream(
+            {
+                folder: folder,
+                resource_type: resourceType,
+            },
+            (error, result) => {
+                if (error) return reject(error);
+                resolve(result);
+            }
+        );
+        streamifier.createReadStream(buffer).pipe(uploadStream);
+    });
+};
 
-/**
- * Generate secure random filename with UUID
- * @param {string} originalName - Original filename
- * @param {string} [forceExt] - Force specific extension
- * @returns {string} Secure filename
- */
-function generateSecureFilename(originalName, forceExt = null) {
-    const uuid = uuidv4();
-    const ext = forceExt || path.extname(originalName).toLowerCase();
-    return `${uuid}${ext}`;
-}
+// ============ VALIDATION HELPERS ============
 
-/**
- * Validate file using magic bytes (file signature)
- * @param {string} filePath - Path to the file
- * @param {string[]} allowedMimes - Array of allowed MIME types
- * @returns {Promise<{valid: boolean, detected: string|null}>}
- */
-async function validateMagicBytes(filePath, allowedMimes) {
-    try {
-        // Dynamically import file-type (ESM only)
-        const { fileTypeFromFile } = await import('file-type');
-
-        const typeInfo = await fileTypeFromFile(filePath);
-
-        if (!typeInfo) {
-            return { valid: false, detected: null, error: 'Could not determine file signature' };
-        }
-
-        if (!allowedMimes.includes(typeInfo.mime)) {
-            return {
-                valid: false,
-                detected: typeInfo.mime,
-                error: `File type mismatch. Detected: ${typeInfo.mime}`
-            };
-        }
-
-        return { valid: true, detected: typeInfo.mime };
-    } catch (error) {
-        return { valid: false, detected: null, error: error.message };
-    }
-}
-
-/**
- * Validate buffer using magic bytes
- * @param {Buffer} buffer - File buffer
- * @param {string[]} allowedMimes - Array of allowed MIME types
- * @returns {Promise<{valid: boolean, detected: string|null}>}
- */
 async function validateBufferMagicBytes(buffer, allowedMimes) {
     try {
-        // Dynamically import file-type (ESM only)
         const { fileTypeFromBuffer } = await import('file-type');
-
         const typeInfo = await fileTypeFromBuffer(buffer);
-
-        if (!typeInfo) {
-            return { valid: false, detected: null, error: 'Could not determine file signature' };
-        }
-
+        if (!typeInfo) return { valid: false, detected: null, error: 'Could not determine file signature' };
         if (!allowedMimes.includes(typeInfo.mime)) {
-            return {
-                valid: false,
-                detected: typeInfo.mime,
-                error: `File type mismatch. Detected: ${typeInfo.mime}`
-            };
+            return { valid: false, detected: typeInfo.mime, error: `File type mismatch. Detected: ${typeInfo.mime}` };
         }
-
         return { valid: true, detected: typeInfo.mime };
     } catch (error) {
         return { valid: false, detected: null, error: error.message };
     }
 }
 
-/**
- * Compress image to WebP format
- * @param {Buffer|string} input - Image buffer or file path
- * @param {object} options - Compression options
- * @returns {Promise<Buffer>} Compressed WebP buffer
- */
+// ============ IMAGE PROCESSING ============
+
 async function compressToWebP(input, options = {}) {
-    // If sharp is not available, return the original buffer
-    if (!sharpAvailable || !sharp) {
-        console.warn('[UPLOAD] Compression skipped - sharp not available');
-        return Buffer.isBuffer(input) ? input : await fsPromises.readFile(input);
-    }
-
-    const {
-        quality = 85,
-        maxWidth = 1920,
-        maxHeight = 1080,
-    } = options;
-
+    if (!sharpAvailable || !sharp) return input;
+    const { quality = 85, maxWidth = 1920, maxHeight = 1080 } = options;
     try {
         let sharpInstance = sharp(input);
-
-        // Get metadata for smart resizing
         const metadata = await sharpInstance.metadata();
-
-        // Resize if larger than max dimensions (preserve aspect ratio)
         if (metadata.width > maxWidth || metadata.height > maxHeight) {
-            sharpInstance = sharpInstance.resize(maxWidth, maxHeight, {
-                fit: 'inside',
-                withoutEnlargement: true,
-            });
+            sharpInstance = sharpInstance.resize(maxWidth, maxHeight, { fit: 'inside', withoutEnlargement: true });
         }
-
-        // Convert to WebP with quality setting
-        const webpBuffer = await sharpInstance
-            .webp({ quality: Math.max(10, Math.min(100, quality)) })
-            .toBuffer();
-
-        return webpBuffer;
+        return await sharpInstance.webp({ quality: Math.max(10, Math.min(100, quality)) }).toBuffer();
     } catch (error) {
-        console.error('Image compression failed:', error.message);
         throw new Error(`Image compression failed: ${error.message}`);
     }
 }
 
-/**
- * Compress image to target size (iterative quality reduction)
- * @param {Buffer} buffer - Image buffer
- * @param {number} targetSize - Target size in bytes
- * @param {number} minQuality - Minimum quality to use
- * @returns {Promise<Buffer>} Compressed buffer
- */
-async function compressToTargetSize(buffer, targetSize, minQuality = 20) {
-    // If sharp is not available, return the original buffer
-    if (!sharpAvailable || !sharp) {
-        console.warn('[UPLOAD] Compression skipped - sharp not available');
-        return buffer;
-    }
+// ============ MIDDLEWARE FACTORIES ============
 
-    let quality = 85;
-    let compressed = buffer;
-
-    while (compressed.length > targetSize && quality > minQuality) {
-        compressed = await sharp(buffer)
-            .webp({ quality })
-            .toBuffer();
-        quality -= 10;
-    }
-
-    return compressed;
-}
-
-// ============ MULTER STORAGE CONFIGURATION ============
-
-/**
- * Create secure multer storage configuration
- * @param {object} options - Storage options
- * @returns {multer.StorageEngine} Multer storage engine
- */
-function createSecureStorage(options = {}) {
-    const {
-        destination = 'uploads',
-        useMemory = false,
-    } = options;
-
-    if (useMemory) {
-        return multer.memoryStorage();
-    }
-
-    // Ensure upload directory exists
-    if (!fs.existsSync(destination)) {
-        fs.mkdirSync(destination, { recursive: true });
-    }
-
-    return multer.diskStorage({
-        destination: (req, file, cb) => {
-            cb(null, destination);
-        },
-        filename: (req, file, cb) => {
-            // Generate secure random filename
-            const secureFilename = generateSecureFilename(file.originalname);
-            cb(null, secureFilename);
-        },
-    });
-}
-
-/**
- * Create file filter for multer
- * @param {string[]} allowedMimes - Allowed MIME types
- * @param {string[]} allowedExts - Allowed file extensions
- * @returns {Function} Multer file filter
- */
 function createFileFilter(allowedMimes, allowedExts) {
     return (req, file, cb) => {
         const originalName = file.originalname.toLowerCase();
         const ext = path.extname(originalName);
-
-        // Check for dangerous extensions (double extension attack)
-        if (DANGEROUS_EXTENSIONS_REGEX.test(originalName)) {
-            console.warn(`[SECURITY] Blocked dangerous extension: ${originalName}`);
-            return cb(new Error('Potentially dangerous file type detected.'));
-        }
-
-        // Validate file extension
-        if (!allowedExts.includes(ext)) {
-            return cb(new Error(`Invalid file extension. Allowed: ${allowedExts.join(', ')}`));
-        }
-
-        // Validate MIME type (client-reported)
-        if (!allowedMimes.includes(file.mimetype)) {
-            return cb(new Error(`Invalid file type. Allowed: ${allowedMimes.join(', ')}`));
-        }
-
+        if (DANGEROUS_EXTENSIONS_REGEX.test(originalName)) return cb(new Error('Potentially dangerous file type.'));
+        if (!allowedExts.includes(ext)) return cb(new Error(`Invalid extension. Allowed: ${allowedExts.join(', ')}`));
+        if (!allowedMimes.includes(file.mimetype)) return cb(new Error(`Invalid type. Allowed: ${allowedMimes.join(', ')}`));
         cb(null, true);
     };
 }
 
-// ============ MIDDLEWARE FACTORIES ============
+const cloudUploadHandler = async (req, res, next, uploader, isMulti = false, options = {}) => {
+    uploader(req, res, async (err) => {
+        if (err) return res.status(400).json({ isOk: false, message: err.message });
+        
+        const filesToProcess = isMulti ? [] : (req.file ? [req.file] : []);
+        if (isMulti && req.files) {
+            Object.keys(req.files).forEach(key => filesToProcess.push(...req.files[key]));
+        }
 
-/**
- * Create secure upload middleware for images
- * Includes: validation, compression, WebP conversion
- * @param {object} options - Middleware options
- * @returns {Function} Express middleware
- */
+        if (filesToProcess.length === 0) return next();
+
+        try {
+            for (const file of filesToProcess) {
+                const validation = await validateBufferMagicBytes(file.buffer, options.allowedMimes || ALLOWED_MIMES.all);
+                if (!validation.valid) throw new Error(validation.error);
+
+                let buffer = file.buffer;
+                if (options.isImage && sharpAvailable) {
+                    buffer = await compressToWebP(file.buffer, { quality: options.quality || 85 });
+                    file.mimetype = 'image/webp';
+                }
+
+                // Cloudinary Folder (uses destination if provided, or project name)
+                const folderName = options.destination || "portfolio_uploads";
+                const cloudResult = await uploadToCloudinary(buffer, folderName);
+                
+                file.path = cloudResult.secure_url; // Controllers use .path for URL
+                file.filename = cloudResult.public_id;
+                file.size = cloudResult.bytes;
+            }
+            next();
+        } catch (error) {
+            console.error('[UPLOAD ERROR]', error);
+            res.status(500).json({ isOk: false, message: error.message });
+        }
+    });
+};
+
 function createSecureImageUpload(options = {}) {
-    const {
-        destination = 'uploads',
-        fieldName = 'file',
-        maxSize = FILE_SIZE_LIMITS.image,
-        compress = true,
-        convertToWebP = true,
-        targetSize = null, // Target file size in bytes
-        quality = 85,
-    } = options;
-
-    const upload = multer({
-        storage: multer.memoryStorage(), // Use memory for processing
-        fileFilter: createFileFilter(ALLOWED_MIMES.images, ALLOWED_EXTENSIONS.images),
-        limits: { fileSize: maxSize },
-    });
-
-    return (req, res, next) => {
-        const uploader = upload.single(fieldName);
-
-        uploader(req, res, async (err) => {
-            if (err) {
-                if (err.code === 'LIMIT_FILE_SIZE') {
-                    return res.status(400).json({
-                        isOk: false,
-                        status: 400,
-                        error: 'File Too Large',
-                        message: `File size exceeds ${maxSize / (1024 * 1024)}MB limit`,
-                    });
-                }
-                return res.status(400).json({
-                    isOk: false,
-                    status: 400,
-                    error: 'Upload Error',
-                    message: err.message,
-                });
-            }
-
-            if (!req.file) {
-                return next(); // No file uploaded, continue (might be optional)
-            }
-
-            try {
-                // 1. Validate magic bytes
-                const validation = await validateBufferMagicBytes(
-                    req.file.buffer,
-                    ALLOWED_MIMES.images
-                );
-
-                if (!validation.valid) {
-                    console.warn(`[SECURITY] Magic byte validation failed for upload`);
-                    return res.status(400).json({
-                        isOk: false,
-                        status: 400,
-                        error: 'Security Validation Failed',
-                        message: validation.error || 'Invalid file type',
-                    });
-                }
-
-                // 2. Process image (compress and/or convert)
-                let processedBuffer = req.file.buffer;
-                let finalExt = path.extname(req.file.originalname).toLowerCase();
-                let compressionApplied = false;
-
-                if ((compress || convertToWebP) && sharpAvailable) {
-                    if (targetSize) {
-                        // Compress to target size
-                        processedBuffer = await compressToTargetSize(
-                            req.file.buffer,
-                            targetSize
-                        );
-                        finalExt = '.webp';
-                        compressionApplied = true;
-                    } else {
-                        // Standard compression
-                        processedBuffer = await compressToWebP(req.file.buffer, { quality });
-                        finalExt = '.webp';
-                        compressionApplied = true;
-                    }
-                }
-
-                // 3. Save to disk with secure filename
-                await ensureUploadDir(destination);
-                const secureFilename = generateSecureFilename(req.file.originalname, finalExt);
-                const filePath = path.join(destination, secureFilename);
-
-                await fsPromises.writeFile(filePath, processedBuffer);
-
-                // 4. Update req.file with processed file info
-                req.file.filename = secureFilename;
-                req.file.path = filePath;
-                req.file.size = processedBuffer.length;
-                req.file.mimetype = 'image/webp';
-                req.file.originalSize = req.file.buffer.length;
-                req.file.compressionRatio = (
-                    ((req.file.buffer.length - processedBuffer.length) / req.file.buffer.length) * 100
-                ).toFixed(2);
-
-                // Remove buffer from memory
-                delete req.file.buffer;
-
-                console.log(`[UPLOAD] Secure image upload: ${secureFilename} (${(processedBuffer.length / 1024).toFixed(2)}KB)`);
-                next();
-            } catch (error) {
-                console.error('[UPLOAD] Processing error:', error.message);
-                return res.status(500).json({
-                    isOk: false,
-                    status: 500,
-                    error: 'Processing Error',
-                    message: 'Failed to process uploaded file',
-                });
-            }
-        });
-    };
-}
-
-/**
- * Create secure upload middleware for documents (PDF)
- * Includes: validation, magic byte check
- * @param {object} options - Middleware options
- * @returns {Function} Express middleware
- */
-function createSecureDocumentUpload(options = {}) {
-    const {
-        destination = 'uploads',
-        fieldName = 'file',
-        maxSize = FILE_SIZE_LIMITS.document,
-    } = options;
-
-    const upload = multer({
-        storage: createSecureStorage({ destination }),
-        fileFilter: createFileFilter(ALLOWED_MIMES.documents, ALLOWED_EXTENSIONS.documents),
-        limits: { fileSize: maxSize },
-    });
-
-    return (req, res, next) => {
-        const uploader = upload.single(fieldName);
-
-        uploader(req, res, async (err) => {
-            if (err) {
-                if (err.code === 'LIMIT_FILE_SIZE') {
-                    return res.status(400).json({
-                        isOk: false,
-                        status: 400,
-                        error: 'File Too Large',
-                        message: `File size exceeds ${maxSize / (1024 * 1024)}MB limit`,
-                    });
-                }
-                return res.status(400).json({
-                    isOk: false,
-                    status: 400,
-                    error: 'Upload Error',
-                    message: err.message,
-                });
-            }
-
-            if (!req.file) {
-                return next();
-            }
-
-            try {
-                // Validate magic bytes
-                const validation = await validateMagicBytes(
-                    req.file.path,
-                    ALLOWED_MIMES.documents
-                );
-
-                if (!validation.valid) {
-                    // Delete the uploaded file
-                    try {
-                        await fsPromises.unlink(req.file.path);
-                    } catch (unlinkErr) {
-                        console.error('Failed to delete invalid file:', unlinkErr);
-                    }
-
-                    console.warn(`[SECURITY] Magic byte validation failed for document upload`);
-                    return res.status(400).json({
-                        isOk: false,
-                        status: 400,
-                        error: 'Security Validation Failed',
-                        message: validation.error || 'Invalid file type',
-                    });
-                }
-
-                console.log(`[UPLOAD] Secure document upload: ${req.file.filename}`);
-                next();
-            } catch (error) {
-                console.error('[UPLOAD] Validation error:', error.message);
-                return res.status(500).json({
-                    isOk: false,
-                    status: 500,
-                    error: 'Validation Error',
-                    message: 'Failed to validate uploaded file',
-                });
-            }
-        });
-    };
-}
-
-/**
- * Create generic secure upload middleware
- * @param {object} options - Middleware options
- * @returns {Function} Express middleware
- */
-function createSecureUpload(options = {}) {
-    const {
-        destination = 'uploads',
-        fieldName = 'file',
-        maxSize = FILE_SIZE_LIMITS.default,
-        allowedMimes = ALLOWED_MIMES.all,
-        allowedExts = ALLOWED_EXTENSIONS.all,
-    } = options;
-
-    const upload = multer({
-        storage: createSecureStorage({ destination }),
-        fileFilter: createFileFilter(allowedMimes, allowedExts),
-        limits: { fileSize: maxSize },
-    });
-
-    return (req, res, next) => {
-        const uploader = upload.single(fieldName);
-
-        uploader(req, res, async (err) => {
-            if (err) {
-                if (err.code === 'LIMIT_FILE_SIZE') {
-                    return res.status(400).json({
-                        isOk: false,
-                        status: 400,
-                        error: 'File Too Large',
-                        message: `File size exceeds ${maxSize / (1024 * 1024)}MB limit`,
-                    });
-                }
-                return res.status(400).json({
-                    isOk: false,
-                    status: 400,
-                    error: 'Upload Error',
-                    message: err.message,
-                });
-            }
-
-            if (!req.file) {
-                return next();
-            }
-
-            try {
-                // Validate magic bytes
-                const validation = await validateMagicBytes(req.file.path, allowedMimes);
-
-                if (!validation.valid) {
-                    try {
-                        await fsPromises.unlink(req.file.path);
-                    } catch (unlinkErr) {
-                        console.error('Failed to delete invalid file:', unlinkErr);
-                    }
-
-                    return res.status(400).json({
-                        isOk: false,
-                        status: 400,
-                        error: 'Security Validation Failed',
-                        message: validation.error || 'Invalid file type',
-                    });
-                }
-
-                console.log(`[UPLOAD] Secure file upload: ${req.file.filename} (${validation.detected})`);
-                next();
-            } catch (error) {
-                console.error('[UPLOAD] Validation error:', error.message);
-                return res.status(500).json({
-                    isOk: false,
-                    status: 500,
-                    error: 'Validation Error',
-                    message: 'Failed to validate uploaded file',
-                });
-            }
-        });
-    };
-}
-
-/**
- * Create secure upload middleware for multiple files
- * @param {object} options - Middleware options
- * @returns {Function} Express middleware
- */
-function createSecureMultiUpload(options = {}) {
-    const {
-        destination = 'uploads',
-        fields = [{ name: 'files', maxCount: 5 }],
-        maxSize = FILE_SIZE_LIMITS.default,
-        allowedMimes = ALLOWED_MIMES.images,
-        allowedExts = ALLOWED_EXTENSIONS.images,
-        compress = true,
-        quality = 85,
-    } = options;
-
     const upload = multer({
         storage: multer.memoryStorage(),
-        fileFilter: createFileFilter(allowedMimes, allowedExts),
-        limits: { fileSize: maxSize },
+        fileFilter: createFileFilter(ALLOWED_MIMES.images, ALLOWED_EXTENSIONS.images),
+        limits: { fileSize: options.maxSize || FILE_SIZE_LIMITS.image },
     });
-
-    return (req, res, next) => {
-        const uploader = upload.fields(fields);
-
-        uploader(req, res, async (err) => {
-            if (err) {
-                if (err.code === 'LIMIT_FILE_SIZE') {
-                    return res.status(400).json({
-                        isOk: false,
-                        status: 400,
-                        error: 'File Too Large',
-                        message: `File size exceeds ${maxSize / (1024 * 1024)}MB limit`,
-                    });
-                }
-                return res.status(400).json({
-                    isOk: false,
-                    status: 400,
-                    error: 'Upload Error',
-                    message: err.message,
-                });
-            }
-
-            try {
-                await ensureUploadDir(destination);
-
-                // Process each field's files
-                for (const field of fields) {
-                    const files = req.files?.[field.name] || [];
-
-                    for (let i = 0; i < files.length; i++) {
-                        const file = files[i];
-
-                        // Validate magic bytes
-                        const validation = await validateBufferMagicBytes(file.buffer, allowedMimes);
-                        if (!validation.valid) {
-                            return res.status(400).json({
-                                isOk: false,
-                                status: 400,
-                                error: 'Security Validation Failed',
-                                message: `File validation failed: ${validation.error}`,
-                            });
-                        }
-
-                        // Process image if compression is enabled and sharp is available
-                        let processedBuffer = file.buffer;
-                        let finalExt = path.extname(file.originalname).toLowerCase();
-
-                        if (compress && sharpAvailable && allowedMimes.some(m => m.startsWith('image/'))) {
-                            processedBuffer = await compressToWebP(file.buffer, { quality });
-                            finalExt = '.webp';
-                        }
-
-                        // Save with secure filename
-                        const secureFilename = generateSecureFilename(file.originalname, finalExt);
-                        const filePath = path.join(destination, secureFilename);
-                        await fsPromises.writeFile(filePath, processedBuffer);
-
-                        // Update file info
-                        files[i].filename = secureFilename;
-                        files[i].path = filePath;
-                        files[i].size = processedBuffer.length;
-                        delete files[i].buffer;
-                    }
-                }
-
-                next();
-            } catch (error) {
-                console.error('[UPLOAD] Multi-upload error:', error.message);
-                return res.status(500).json({
-                    isOk: false,
-                    status: 500,
-                    error: 'Processing Error',
-                    message: 'Failed to process uploaded files',
-                });
-            }
-        });
-    };
+    return (req, res, next) => cloudUploadHandler(req, res, next, upload.single(options.fieldName || 'file'), false, { ...options, isImage: true, allowedMimes: ALLOWED_MIMES.images });
 }
 
-// ============ UTILITY EXPORTS ============
+function createSecureDocumentUpload(options = {}) {
+    const upload = multer({
+        storage: multer.memoryStorage(),
+        fileFilter: createFileFilter(ALLOWED_MIMES.documents, ALLOWED_EXTENSIONS.documents),
+        limits: { fileSize: options.maxSize || FILE_SIZE_LIMITS.document },
+    });
+    return (req, res, next) => cloudUploadHandler(req, res, next, upload.single(options.fieldName || 'file'), false, { ...options, isImage: false, allowedMimes: ALLOWED_MIMES.documents });
+}
+
+function createSecureMultiUpload(options = {}) {
+    const upload = multer({
+        storage: multer.memoryStorage(),
+        fileFilter: createFileFilter(ALLOWED_MIMES.images, ALLOWED_EXTENSIONS.images),
+        limits: { fileSize: options.maxSize || FILE_SIZE_LIMITS.default },
+    });
+    const fields = options.fields || [{ name: 'files', maxCount: 5 }];
+    return (req, res, next) => cloudUploadHandler(req, res, next, upload.fields(fields), true, { ...options, isImage: true, allowedMimes: ALLOWED_MIMES.images });
+}
+
 module.exports = {
     createSecureImageUpload,
     createSecureDocumentUpload,
-    createSecureUpload,
     createSecureMultiUpload,
-    compressToWebP,
-    compressToTargetSize,
-    validateMagicBytes,
     validateBufferMagicBytes,
-    generateSecureFilename,
-    ensureUploadDir,
     ALLOWED_MIMES,
     ALLOWED_EXTENSIONS,
     FILE_SIZE_LIMITS,
-    DANGEROUS_EXTENSIONS_REGEX,
 };
