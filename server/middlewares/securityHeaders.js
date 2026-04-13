@@ -29,7 +29,9 @@ const securityHeaders = helmet({
         "https:",
         "http://localhost:7005",
         "http://127.0.0.1:7005",
+        "https://res.cloudinary.com"
       ],
+
       connectSrc: [
         "'self'",
         "https://api.ipify.org",
@@ -38,7 +40,10 @@ const securityHeaders = helmet({
         "https://fonts.googleapis.com",
         "https://fonts.gstatic.com",
         "https://*.googleapis.com",
-      ], // Allow local API calls and Google endpoints
+        "https://*.vercel.app",
+        "https://res.cloudinary.com"
+      ], // Allow local API calls, Vercel, Cloudinary and Google endpoints
+
       fontSrc: ["'self'", "https:", "data:", "https://fonts.gstatic.com"],
       objectSrc: ["'none'"],
       mediaSrc: ["'self'"],
@@ -139,17 +144,18 @@ const getCorsConfig = (allowedOrigins = []) => {
       // Allow requests with no origin (mobile apps, curl, etc.)
       if (!origin) return callback(null, true);
 
-      if (origins.includes(origin)) {
+      if (origins.includes(origin) || origin.endsWith(".vercel.app")) {
         return callback(null, true);
       }
 
-      // In development, allow all origins
-      if (process.env.NODE_ENV === "development") {
+      // In development or if it matches localhost, allow
+      if (process.env.NODE_ENV === "development" || origin.includes("localhost")) {
         return callback(null, true);
       }
 
       console.warn(`[CORS] Blocked request from origin: ${origin}`);
       return callback(new Error("Not allowed by CORS"), false);
+
     },
     credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],

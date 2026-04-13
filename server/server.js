@@ -71,6 +71,10 @@ if (fs.existsSync(routesDir)) {
 }
 
 // Health check
+app.get("/api/health", (req, res) => {
+  res.json({ isOk: true, message: "Portfolio API is healthy", timestamp: new Date() });
+});
+
 app.get("/api", (req, res) => {
   res.json({ isOk: true, message: "Portfolio API is running" });
 });
